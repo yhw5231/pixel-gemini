@@ -6,3 +6,7 @@ selenium==4.21.0
 
 # WebDriver management (auto-downloads matching chromedriver)
 webdriver-manager==4.0.1
+
+# Web UI
+flask==3.0.3
+gunicorn==22.0.0

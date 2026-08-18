@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Logs · Pixel Gemini{% endblock %}
+{% block content %}
+<h1>Application logs</h1>
+<p class="muted">Last {{ lines|length }} log lines (in-memory ring buffer).</p>
+{% if lines %}
+<pre class="logs">{% for line in lines %}{{ line }}
+{% endfor %}</pre>
+{% else %}
+<p class="muted">No log lines captured yet.</p>
+{% endif %}
+{% endblock %}

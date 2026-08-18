@@ -1,0 +1,32 @@
+# ── Pixel Gemini – one-command container stack ───────────────────────────────
+services:
+  pixel-gemini:
+    build: .
+    container_name: pixel-gemini
+    ports:
+      - "8000:8000"
+    environment:
+      # Web admin credentials (defaults: admin / admin)
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin
+      # Session signing key – change in production!
+      SECRET_KEY: change-me-in-production
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 8000
+      # Optional Telegram bot (leave empty to disable)
+      TELEGRAM_BOT_TOKEN: ""
+      # chromedriver: leave empty for webdriver-manager (auto, pre-cached
+      # in the image); or point to a custom driver binary
+      CHROMEDRIVER_PATH: ""
+      # Optional egress proxy – strongly recommended (Google flags
+      # datacenter IPs). Example: http://user:pass@host:port
+      PROXY_URL: ""
+      # Simulated device locale/timezone – keep consistent with proxy region
+      DEVICE_TIMEZONE: America/Los_Angeles
+      DEVICE_LANGUAGE: en-US
+    volumes:
+      - pixel-gemini-data:/data
+    restart: unless-stopped
+
+volumes:
+  pixel-gemini-data:

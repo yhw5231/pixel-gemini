@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+*.pyc
+data/
+data.db
+pixel_gemini.db
+*.sqlite3
+.DS_Store

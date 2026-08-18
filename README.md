@@ -1,136 +1,271 @@
 # pixel-gemini
 
-**Pixel 10 Pro Google One Gemini Offer Bot – Telegram Interface**
+**Pixel 10 Pro Google One Gemini Offer Bot —— Web 界面 + Telegram 机器人**
 
-A Replit-hosted Telegram bot that simulates a Google Pixel 10 Pro (Android 16)
-device, logs into a user-supplied Gmail account, and retrieves the
-**12-month free Gemini Pro** activation link from Google One.
+模拟一台 Google Pixel 10 Pro（Android 16）设备，登录用户提供的 Gmail
+账号，在 Google One 中检索 **12 个月免费 Gemini Pro** 激活链接。
 
----
-
-## Project Structure
-
-```
-pixel-gemini/
-├── main.py               # Telegram bot entry point
-├── device_simulator.py   # Android Pixel 10 Pro device simulation
-├── google_automation.py  # Google One login and offer detection
-├── config.py             # Configuration and constants
-├── requirements.txt      # Python dependencies
-└── README.md             # This file
-```
+> ✅ 容器化运行（Docker），提供 **Web 管理界面**，默认管理员账号密码：
+> **`admin` / `admin`**
+> ✅ 原 Telegram 机器人接口保留，可通过环境变量选择性启用
 
 ---
 
-## Features
+## 目录
 
-| Feature | Details |
+- [功能特性](#功能特性)
+- [快速开始（Docker 容器运行）](#快速开始docker-容器运行)
+- [Web 界面使用说明](#web-界面使用说明)
+- [环境变量说明](#环境变量说明)
+- [本地开发（不依赖 Docker）](#本地开发不依赖-docker)
+- [Telegram 机器人（可选）](#telegram-机器人可选)
+- [项目结构](#项目结构)
+- [常见问题 FAQ](#常见问题-faq)
+- [风控与免责声明](#风控与免责声明)
+
+---
+
+## 功能特性
+
+| 功能 | 说明 |
 |---|---|
-| 📱 Device simulation | Pixel 10 Pro (Android 16) with unique IMEI, Android ID, and user-agent per session |
-| 🤖 Telegram bot | `/start`, `/login`, `/check_offer`, `/get_link`, `/status` commands |
-| 🔐 Gmail login | Selenium-based Google account authentication |
-| 💳 Offer detection | Scans Google One for the 12-month Gemini Pro offer and extracts the activation link |
-| 🔄 Session management | In-memory per-user sessions; passwords deleted from chat on capture |
+| 📱 设备模拟 | Pixel 10 Pro（Android 16）移动端 UA、触摸/语言/时区一致化、反自动化指纹补丁（WebGL/Canvas/Client-Hints） |
+| 🆔 唯一标识 | 每会话生成**永不重复**的 IMEI（Luhn 合法）、Android ID、Chrome 补丁号（密码学安全随机源） |
+| 🌐 Web 界面 | 管理员登录、Gmail 账号管理、一键运行检测、实时进度、运行历史、日志查看 |
+| 🔐 登录自动化 | Selenium 无头 Chrome 登录 Google 账号，识别并报告风控/验证码/2FA 拦截原因 |
+| 💳 Offer 检测 | 扫描 Google One 中 Gemini Pro 12 个月免费套餐，提取激活链接 |
+| 🐳 容器化 | 一键 `docker compose up`，数据持久化到卷，内置健康检查 |
+| 🤖 Telegram | 可选启用原 `/login`、`/check_offer`、`/get_link`、`/status` 机器人 |
 
 ---
 
-## Setup on Replit
+## 快速开始（Docker 容器运行）
 
-### 1. Fork / import this repository
+### 1. 前置要求
 
-Open [Replit](https://replit.com) and create a new Repl from this GitHub repo.
+- 已安装 **Docker** 与 **Docker Compose**（`docker compose version` 可验证）
+- 开放/可访问端口 `8000`
 
-### 2. Create a Telegram Bot
-
-1. Open Telegram and search for **@BotFather**.
-2. Send `/newbot` and follow the prompts.
-3. Copy the API token you receive (looks like `123456:ABC-DEF…`).
-
-### 3. Set the environment variable
-
-In the Replit sidebar click **Secrets** (🔒) and add:
-
-| Key | Value |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Your token from BotFather |
-
-### 4. Install dependencies
+### 2. 启动
 
 ```bash
+# 在项目根目录执行
+docker compose up -d --build
+```
+
+首次构建会下载 Python 3.12 镜像并安装 Chromium，约需几分钟。
+
+### 3. 登录 Web 界面
+
+打开浏览器访问 **http://localhost:8000**，使用默认管理员账号登录：
+
+| 字段 | 值 |
+|---|---|
+| 用户名 | `admin` |
+| 密码 | `admin` |
+
+> ⚠️ **安全提示**：默认账号密码仅用于本地/内网测试。对外暴露前请务必
+> 修改密码（环境变量 `ADMIN_PASSWORD`）并设置固定 `SECRET_KEY`。
+
+### 4. 停止 / 查看状态
+
+```bash
+docker compose down          # 停止（保留数据卷）
+docker compose logs -f       # 查看容器日志
+docker compose ps            # 查看容器状态
+```
+
+数据（SQLite 数据库）保存在 Docker 数据卷 `pixel-gemini-data` 中，
+删除容器不会丢失；如需彻底清理：`docker compose down -v`。
+
+---
+
+## Web 界面使用说明
+
+界面包含 5 个页面，顶部导航栏切换：
+
+### 1. 登录（/login）
+
+输入管理员用户名密码（默认 `admin` / `admin`）。登录状态保存在会话
+Cookie 中，所有页面均需要登录后才能访问。
+
+### 2. 仪表盘（/）
+
+- 运行统计：完成数、错误数、进行中数
+- 最近 10 次运行记录（点击编号可查看详情）
+
+### 3. 账号管理（/accounts）
+
+- **添加账号**：填写 Gmail 邮箱、密码、备注，点击「Add account」
+- **列表**：显示已保存账号，每个账号有操作按钮
+  - 「▶ Check offer」：为该账号启动一次 Gemini Offer 检测
+  - 「Delete」：删除账号（会二次确认）
+- 凭据保存于本地 SQLite（容器内 `/data/pixel_gemini.db`），
+  请自行保证运行环境安全
+
+### 4. 运行详情（/run/<id>）
+
+点击任一运行的编号进入详情页：
+
+- 实时状态：`queued`（排队）→ `running`（运行中）→ `done`（完成）/
+  `error`（失败），页面每 2 秒自动刷新
+- 检测完成后显示 **Offer 激活链接**（或失败原因）
+- 显示本次生成的设备摘要（型号、Android 版本、IMEI、会话号）
+
+### 5. 运行历史（/runs）
+
+最近 100 次运行的完整列表：账号、状态、结果链接、开始/结束时间。
+
+### 6. 日志（/logs）
+
+最近 2000 行应用日志（内存环形缓冲），用于排查自动化问题。
+
+### 典型使用流程
+
+```
+1. 浏览器打开 http://localhost:8000，用 admin/admin 登录
+2. 进入「Accounts」→ 添加你的 Gmail 账号（邮箱 + 密码）
+3. 点击该账号的「▶ Check offer」
+4. 自动跳转到运行详情页，等待进度（约 30~60 秒）
+5. 完成后复制页面上的 Gemini Pro 激活链接（或查看失败原因）
+```
+
+---
+
+## 环境变量说明
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `ADMIN_USERNAME` | `admin` | Web 界面管理员用户名 |
+| `ADMIN_PASSWORD` | `admin` | Web 界面管理员密码 |
+| `SECRET_KEY` | 随机生成 | Flask 会话签名密钥（生产环境务必固定） |
+| `WEB_HOST` | `0.0.0.0` | Web 服务监听地址 |
+| `WEB_PORT` | `8000` | Web 服务端口 |
+| `DATA_DIR` | `/data` | SQLite 数据库与数据文件目录 |
+| `TELEGRAM_BOT_TOKEN` | 空 | 设置后同时启动 Telegram 机器人 |
+| `CHROMEDRIVER_PATH` | 空 | chromedriver 路径；**留空时由 Selenium Manager 自动解析**（镜像构建期已预缓存） |
+| `PROXY_URL` | 空 | 出口代理（强烈建议），如 `http://user:pass@host:port` |
+| `DEVICE_TIMEZONE` | `America/Los_Angeles` | 模拟设备时区（应与代理地区一致） |
+| `DEVICE_LANGUAGE` | `en-US` | 模拟设备语言 |
+| `DEVICE_PLATFORM` | `Android` | Client-Hints 平台字段 |
+| `DEVICE_VIEWPORT_WIDTH` | `427` | CSS 视口宽（Pixel 10 Pro 1280×2856 @3.0 的真实比例） |
+| `DEVICE_VIEWPORT_HEIGHT` | `952` | CSS 视口高 |
+| `DEVICE_PIXEL_RATIO` | `3.0` | 设备像素比 |
+| `DEVICE_CORES` | `8` | 暴露的 CPU 核心数 |
+| `DEVICE_MEMORY_GB` | `8` | 暴露的内存大小（GB） |
+| `DEVICE_TOUCH_POINTS` | `5` | 触控点数 |
+| `DEVICE_GPU_VENDOR` | `Imagination Technologies` | WebGL 指纹上报的 GPU 厂商（隐藏 SwiftShader） |
+| `DEVICE_GPU_RENDERER` | `PowerVR DXT-48-1536` | WebGL 指纹上报的 GPU 型号（Pixel 10 Pro Tensor G5 真实 GPU） |
+
+---
+
+## 本地开发（不依赖 Docker）
+
+需要 Python 3.10+，且本机装有 Google Chrome/Chromium 及匹配的
+chromedriver（或用 `CHROMEDRIVER_PATH` 指定）。
+
+```bash
+# 创建虚拟环境并安装依赖
+python -m venv .venv
+.venv\Scripts\activate            # Windows
+# source .venv/bin/activate       # Linux / macOS
+
 pip install -r requirements.txt
-```
 
-Replit runs this automatically on first start if you use a `pyproject.toml`
-or if the Run button is configured to execute `pip install` first.
+# 启动 Web 界面（http://127.0.0.1:8000）
+python webapp.py
 
-### 5. Run the bot
-
-Click **Run** in Replit, or execute:
-
-```bash
+# 另开终端启动 Telegram 机器人（需设置 TELEGRAM_BOT_TOKEN）
+# set TELEGRAM_BOT_TOKEN=123456:ABC-DEF   （Windows）
 python main.py
 ```
 
-The bot will start polling for Telegram updates.
+运行测试脚本：
+
+```bash
+python test_smoke.py            # 页面渲染/登录/鉴权冒烟测试
+python test_success_path.py     # 模拟成功路径（mock 检测器）
+```
 
 ---
 
-## Usage
+## Telegram 机器人（可选）
 
-| Command | Description |
+Web 界面之外的原有 Telegram 接口：
+
+1. 在 Telegram 中通过 **@BotFather** 创建机器人，获取 Token
+2. 在 `docker-compose.yml` 中设置 `TELEGRAM_BOT_TOKEN` 后重启，
+   或临时运行：`docker compose run --rm -e TELEGRAM_BOT_TOKEN=xxx pixel-gemini`
+
+命令一览：
+
+| 命令 | 说明 |
 |---|---|
-| `/start` | Show welcome message and command list |
-| `/login` | Enter Gmail email and password (two-step conversation) |
-| `/check_offer` | Simulate device, log in, and search for the Gemini Pro offer |
-| `/get_link` | Retrieve the last captured offer link |
-| `/status` | View current session info and device profile |
+| `/start` | 欢迎信息与命令列表 |
+| `/login` | 输入 Gmail 邮箱和密码（两步对话，密码消息自动删除） |
+| `/check_offer` | 模拟设备、登录并检测 Gemini Pro Offer |
+| `/get_link` | 再次获取最近一次捕获的 Offer 链接 |
+| `/status` | 查看当前会话与设备信息 |
 
-### Typical flow
+---
+
+## 项目结构
 
 ```
-You: /start
-Bot: Welcome…
-
-You: /login
-Bot: Please enter your Gmail address:
-
-You: user@gmail.com
-Bot: Email received. Now enter your password:
-
-You: ••••••••
-Bot: ✅ Credentials saved. New Pixel 10 Pro device profile created…
-
-You: /check_offer
-Bot: ⏳ Launching device simulator…
-Bot: 🎉 Gemini Pro Offer Found! 🔗 https://one.google.com/…
+pixel-gemini/
+├── webapp.py               # Flask Web 界面（登录/账号/运行/日志）
+├── main.py                 # Telegram 机器人入口
+├── run_bot.py              # Telegram 机器人启动器（容器内使用）
+├── device_simulator.py     # Pixel 10 Pro 设备模拟
+├── google_automation.py    # Google 登录 + Offer 检测自动化
+├── config.py               # 配置与常量
+├── requirements.txt        # Python 依赖
+├── Dockerfile              # 容器镜像（Python 3.12 + Chromium）
+├── docker-compose.yml      # 一键容器编排
+├── docker/entrypoint.sh    # 容器启动脚本
+├── templates/              # Web 页面模板（Jinja2）
+├── static/                 # 样式表
+├── docs/设备模拟与风控分析.md  # 风控问题分析与修复记录（中文）
+├── test_smoke.py           # 页面冒烟测试
+└── test_success_path.py    # 成功路径模拟测试
 ```
 
 ---
 
-## Technical Notes
+## 常见问题 FAQ
 
-- **Headless Chrome** is used via Selenium with mobile emulation matching
-  the Pixel 10 Pro screen dimensions (390 × 844, pixel ratio 3.0).
-- A new **IMEI**, **Android ID**, and **Chrome version patch** are generated
-  for every session using the `device_simulator.py` module.
-- The **user agent** keeps the Pixel 10 Pro identity constant while varying
-  the Chrome patch version and Android ID to reduce fingerprinting.
-- Credentials are stored **in memory only** and never written to disk.
-  The Telegram message containing the password is deleted immediately after
-  being read.
+**Q1：登录提示"Google blocked the login (challenge page…)"？**
+账号触发了 Google 风控。可能原因与对策：
+- 出口 IP 是数据中心 IP → 配置 `PROXY_URL`（住宅/移动代理）
+- 该账号近期登录过于频繁 → 降低频率，先人工登录"养熟"
+- 账号开启 2FA / 有安全验证 → 需人工处理，或更换无 2FA 的账号
+
+**Q2：报错 "session not created: Failed to create Chrome process"？**
+容器内 Chromium 未正常安装/启动。本机运行则需安装 Chrome 或设置
+`CHROMEDRIVER_PATH` 指向匹配的 chromedriver。
+
+**Q3：检测结果是"没有发现 Offer"？**
+Offer 可能不适用于该账号所属地区/已激活/活动结束。可稍后重试。
+
+**Q4：修改管理员密码？**
+设置环境变量 `ADMIN_PASSWORD` 并重启容器（`docker compose up -d`），
+重启时会同步更新数据库中的密码。
+
+**Q5：数据存在哪里？**
+容器内 `/data/pixel_gemini.db`（对应 Docker 卷 `pixel-gemini-data`）。
+本机开发时为 `./data/pixel_gemini.db`。
+
+**Q6：如何彻底清空数据？**
+`docker compose down -v` 删除容器与数据卷（不可恢复）。
 
 ---
 
-## Requirements
+## 风控与免责声明
 
-- Python 3.10+
-- Google Chrome / Chromium installed (Replit provides this)
-- `chromedriver` on PATH (managed automatically by `webdriver-manager`)
-
----
-
-## Disclaimer
-
-This project is provided for educational and personal use only.
-Automating Google account access may violate Google's Terms of Service.
-Use responsibly and only with accounts you own.
+- 详细的检测/风控问题分析与修复记录见
+  [docs/设备模拟与风控分析.md](docs/设备模拟与风控分析.md)（中文）。
+- **重要**：本项目只能模拟浏览器层面的 UA/指纹，**无法通过 Google 的
+  Play Integrity / 设备 attestation 校验**；自动化 Google 账号访问可能
+  违反 Google 服务条款，触发风控属正常现象。
+- 本项目仅供**教育学习与个人合法用途**，请仅使用你拥有且不重要的账号，
+  并自行承担使用风险。

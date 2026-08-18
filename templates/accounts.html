@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Accounts · Pixel Gemini{% endblock %}
+{% block content %}
+<h1>Gmail Accounts</h1>
+
+<div class="card">
+  <h2>Add account</h2>
+  <form method="post" action="{{ url_for('accounts') }}" autocomplete="off">
+    <div class="row">
+      <div>
+        <label for="email">Gmail address</label>
+        <input type="email" id="email" name="email" required placeholder="user@gmail.com">
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="••••••••">
+      </div>
+      <div class="grow">
+        <label for="note">Note (optional)</label>
+        <input type="text" id="note" name="note" placeholder="e.g. personal account">
+      </div>
+      <div class="align-end">
+        <button type="submit" class="primary">Add account</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<h2>Saved accounts</h2>
+{% if accounts %}
+<table>
+  <thead><tr><th>ID</th><th>Email</th><th>Note</th><th>Added</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for a in accounts %}
+    <tr>
+      <td>{{ a['id'] }}</td>
+      <td>{{ a['email'] }}</td>
+      <td>{{ a['note'] or '—' }}</td>
+      <td>{{ a['created_at'] }}</td>
+      <td>
+        <form method="post" action="{{ url_for('start_run') }}" class="inline">
+          <input type="hidden" name="account_id" value="{{ a['id'] }}">
+          <button type="submit" class="small">▶ Check offer</button>
+        </form>
+        <form method="post" action="{{ url_for('account_delete', account_id=a['id']) }}" class="inline"
+              onsubmit="return confirm('Delete account {{ a['email'] }}?');">
+          <button type="submit" class="small danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No accounts saved yet. Add one above to run the Gemini offer check.</p>
+{% endif %}
+{% endblock %}

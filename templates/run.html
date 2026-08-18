@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run['id'] }} · Pixel Gemini{% endblock %}
+{% block content %}
+<h1>Run #{{ run['id'] }}</h1>
+<div class="card">
+  <p><strong>Account:</strong> {{ run['account_email'] }}</p>
+  <p><strong>Status:</strong> <span class="badge {{ run['status'] }}" id="status-badge">{{ run['status'] }}</span></p>
+  <p id="live-message" class="muted">{{ live['message'] if live and live['message'] else '—' }}</p>
+
+  {% if run['offer_link'] %}
+  <p><strong>Offer link:</strong> <a href="{{ run['offer_link'] }}" target="_blank" rel="noopener">{{ run['offer_link'] }}</a></p>
+  {% endif %}
+  {% if run['error'] %}
+  <p><strong>Error:</strong> <span class="err">{{ run['error'] }}</span></p>
+  {% endif %}
+  {% if run['device'] %}
+  <pre class="device">{{ run['device'] }}</pre>
+  {% endif %}
+  <p class="muted small">Started: {{ run['created_at'] }} · Finished: {{ run['finished_at'] or '—' }}</p>
+  <p><a href="{{ url_for('runs') }}">← Back to runs</a></p>
+</div>
+
+<script>
+const runId = {{ run['id'] }};
+const doneStatuses = new Set(['done', 'error']);
+let currentStatus = '{{ run['status'] }}';
+const finished = doneStatuses.has(currentStatus);
+
+async function poll() {
+  try {
+    const res = await fetch('/api/run/' + runId, {headers: {'Accept': 'application/json'}});
+    const data = await res.json();
+    const badge = document.getElementById('status-badge');
+    if (badge) {
+      badge.textContent = data.status;
+      badge.className = 'badge ' + data.status;
+    }
+    const msg = document.getElementById('live-message');
+    if (msg && data.message) msg.textContent = data.message;
+    if (!finished) {
+      if (data.offer_link) {
+        const p = document.createElement('p');
+        p.innerHTML = '<strong>Offer link:</strong> <a href="' + data.offer_link + '" target="_blank" rel="noopener">' + data.offer_link + '</a>';
+        msg.after(p);
+      }
+      if (doneStatuses.has(data.status)) {
+        window.location.reload();
+      }
+    }
+  } catch (e) { /* transient fetch errors are fine */ }
+}
+if (!finished) {
+  setInterval(poll, 2000);
+  poll();
+}
+</script>
+{% endblock %}

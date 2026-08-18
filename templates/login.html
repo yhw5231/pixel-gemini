@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Login · Pixel Gemini{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Admin Login</h1>
+  <p class="muted">Sign in to manage accounts and run the Gemini offer automation.</p>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('login') }}" autocomplete="off">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" required autofocus>
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+    <button type="submit" class="primary">Sign in</button>
+  </form>
+  <p class="muted small">Default credentials: <code>admin</code> / <code>admin</code></p>
+</div>
+{% endblock %}

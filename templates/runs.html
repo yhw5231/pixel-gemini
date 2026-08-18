@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Runs · Pixel Gemini{% endblock %}
+{% block content %}
+<h1>Run history</h1>
+{% if runs %}
+<table>
+  <thead><tr><th>#</th><th>Account</th><th>Status</th><th>Result</th><th>Started</th><th>Finished</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td><a href="{{ url_for('run_detail', run_id=r['id']) }}">#{{ r['id'] }}</a></td>
+      <td>{{ r['account_email'] }}</td>
+      <td><span class="badge {{ r['status'] }}">{{ r['status'] }}</span></td>
+      <td class="truncate">
+        {% if r['offer_link'] %}<a href="{{ r['offer_link'] }}" target="_blank" rel="noopener">{{ r['offer_link'] }}</a>
+        {% elif r['error'] %}<span class="err">{{ r['error'] }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ r['created_at'] }}</td>
+      <td>{{ r['finished_at'] or '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No runs recorded yet.</p>
+{% endif %}
+{% endblock %}
