@@ -15,10 +15,12 @@ services:
       WEB_PORT: 8000
       # Optional Telegram bot (leave empty to disable)
       TELEGRAM_BOT_TOKEN: ""
-      # chromedriver: BAKED INTO the image at /usr/local/bin/chromedriver
-      # (downloaded & verified during docker build, no manual install, works
-      # offline). Leave empty to let Selenium Manager auto-resolve instead.
-      CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
+      # chromedriver: 留空（默认）→ Selenium Manager 自动检测 Chrome 版本，
+      # 有匹配驱动缓存则复用，否则自动联网下载安装匹配版本。
+      # 镜像构建期已内置一份匹配驱动到 /usr/local/bin/chromedriver 作为离线
+      # 兜底。如需强制使用它：CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+      # （版本不匹配时代码仍会自动回退到 Selenium Manager）。
+      CHROMEDRIVER_PATH: ""
       # Optional egress proxy – strongly recommended (Google flags
       # datacenter IPs). Example: http://user:pass@host:port
       PROXY_URL: ""

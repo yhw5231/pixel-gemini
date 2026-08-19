@@ -94,13 +94,15 @@ docker compose ps            # STATUS 应为 healthy（健康检查访问 /healt
 
 需要 chromedriver 吗？——**需要**。Selenium 驱动 Chrome 必须要有与 Chrome 版本匹配的 chromedriver。
 
-**但是不需要自己安装**：
-- 镜像构建时已通过 Selenium Manager 自动下载**匹配的 chromedriver**，并复制到
-  `/usr/local/bin/chromedriver`（`docker-compose.yml` 默认 `CHROMEDRIVER_PATH` 指向它）。
-- 构建期还做了无头 Chrome 启动冒烟验证，确保驱动可用。
-- 容器运行时**无需联网、无需额外挂载 chromedriver**。
-- 即使把 `CHROMEDRIVER_PATH` 留空，Selenium Manager（Selenium 4.6+ 内置）也会自动解析驱动
-  （优先命中镜像缓存，必要时联网下载）。
+**不需要自己安装，且"没匹配到会自动安装"**：
+
+- 默认（`CHROMEDRIVER_PATH` 留空）：**Selenium Manager**（Selenium 4.6+ 内置的驱动管理器）
+  **自动检测**容器内 Chrome 的版本 → 缓存里有**匹配版本**就直接用 → **没有匹配版本就自动联网下载并安装**。
+  所以即使 Chrome 升级导致旧驱动失配，也无需任何人工干预。
+- 镜像构建期已经通过 Selenium Manager 预先下载过一份**与当时 Chrome 匹配**的
+  chromedriver 并做了无头启动冒烟验证，所以**容器离线也能跑**（缓存已在镜像里）。
+- 若你显式设置 `CHROMEDRIVER_PATH`：代码会先校验该驱动的版本——
+  **与 Chrome 版本不匹配时自动回退到 Selenium Manager 自动安装**；启动失败的极端情况也会自动回退重试。
 - 本地开发同理：本机装好 Chrome 后 `CHROMEDRIVER_PATH` 留空即可，Selenium Manager 自动搞定。
 
 ### 6. 升级到新版本
@@ -186,7 +188,7 @@ Cookie 中，所有页面均需要登录后才能访问。
 | `WEB_PORT` | `8000` | Web 服务端口 |
 | `DATA_DIR` | `/data` | SQLite 数据库与数据文件目录 |
 | `TELEGRAM_BOT_TOKEN` | 空 | 设置后同时启动 Telegram 机器人 |
-| `CHROMEDRIVER_PATH` | `/usr/local/bin/chromedriver` | chromedriver 路径；**镜像已内置**；留空则由 Selenium Manager 自动解析 |
+| `CHROMEDRIVER_PATH` | 空（推荐） | chromedriver 路径；默认由 Selenium Manager 自动匹配 Chrome 版本，**不匹配/缺失时自动联网安装**；也可显式指定（例：`/usr/local/bin/chromedriver`，镜像内置的离线兜底） |
 | `PROXY_URL` | 空 | 出口代理（强烈建议），如 `http://user:pass@host:port` |
 | `DEVICE_TIMEZONE` | `America/Los_Angeles` | 模拟设备时区（应与代理地区一致） |
 | `DEVICE_LANGUAGE` | `en-US` | 模拟设备语言 |
@@ -287,12 +289,11 @@ pixel-gemini/
 容器内 Chromium/Chrome 未正常安装或启动。本机开发则需安装 Chrome 或设置
 `CHROMEDRIVER_PATH` 指向匹配的 chromedriver（参考上方"chromedriver 说明"）。
 
-**Q3：容器运行时需要自己装 chromedriver 吗？**
-**不需要。**镜像构建时已自动安装 Google Chrome Stable + 下载匹配的 chromedriver
-并复制到 `/usr/local/bin/chromedriver`（`docker-compose.yml` 默认
-`CHROMEDRIVER_PATH` 指向它）。容器运行时无需联网、无需手动挂载驱动。
-即使把 `CHROMEDRIVER_PATH` 留空，Selenium Manager（Selenium 4.6+ 内置）
-也会自动解析（优先命中镜像缓存）。
+**Q3：容器里 chromedriver 没匹配到 Chrome 版本会自动安装吗？**
+**会。**默认 `CHROMEDRIVER_PATH` 留空，由 Selenium Manager 自动检测 Chrome
+版本并自动下载/复用**匹配版本**（有缓存直接复用，无缓存自动联网安装）。
+镜像内置的 `/usr/local/bin/chromedriver` 只是离线兜底；即使显式指定了它，
+代码也会先做版本校验，**不匹配时自动回退 Selenium Manager 重新匹配**。
 
 **Q4：检测结果是"没有发现 Offer"？**
 Offer 可能不适用于该账号所属地区/已激活/活动结束。可稍后重试。

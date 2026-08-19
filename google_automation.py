@@ -8,11 +8,13 @@ Logs into a Gmail account, navigates to Google One, detects the
 import logging
 import os
 import random as _random
-import time
 import re
+import shutil
+import subprocess
+import time
 import zlib
 from urllib.parse import urlparse
-from typing import Optional
+from typing import Optional, Tuple
 
 from selenium import webdriver
 from selenium.common.exceptions import (
@@ -170,6 +172,96 @@ def _type_human(element, text: str) -> None:
 
 # ── Driver factory ────────────────────────────────────────────────────────────
 
+def _driver_major(path: str) -> Optional[int]:
+    """Extract the major Chrome version reported by a chromedriver binary."""
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True,
+                             text=True, timeout=10)
+        m = re.search(r"(\d+)\.\d+\.\d+", out.stdout or out.stderr)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
+def _detect_chrome_major() -> Optional[int]:
+    """Detect the major version of the installed Chrome/Chromium."""
+    # 1. Look for Chrome/Chromium on PATH (Linux/macOS/Windows).
+    for name in ("google-chrome", "google-chrome-stable",
+                 "chromium", "chromium-browser", "chrome", "msedge"):
+        path = shutil.which(name)
+        if not path:
+            continue
+        try:
+            out = subprocess.run([path, "--version"], capture_output=True,
+                                 text=True, timeout=10)
+            m = re.search(r"(\d+)\.\d+\.\d+", out.stdout + out.stderr)
+            if m:
+                return int(m.group(1))
+        except Exception:
+            continue
+    # 2. Windows registry fallback (Chrome).
+    if os.name == "nt":
+        for hive in (
+            r"HKLM\SOFTWARE\Google\Chrome\BLBeacon",
+            r"HKLM\SOFTWARE\WOW6432Node\Google\Chrome\BLBeacon",
+        ):
+            try:
+                out = subprocess.run(["reg", "query", hive, "/ve"],
+                                     capture_output=True, text=True, timeout=10)
+                m = re.search(r"(\d+)\.\d+\.\d+", out.stdout)
+                if m:
+                    return int(m.group(1))
+            except Exception:
+                continue
+    return None
+
+
+def _resolve_service() -> Tuple[Service, str]:
+    """
+    Resolve the chromedriver Service.
+
+    Returns ``(service, source_label)`` where *source_label* is ``"sm"``
+    (Selenium Manager, auto-installs when no matching driver is cached) or
+    ``"explicit"`` (user-provided path).
+
+    *Explicit path* logic
+    ---------------------
+    - If the file does not exist → fall back to SM.
+    - If the driver's major version does NOT match the installed Chrome
+      major version → log a warning and fall back to SM (so it auto-downloads
+      a matching driver).
+    - If the version cannot be compared (e.g. Chrome detection fails) → try
+      the explicit driver anyway; if it fails at session creation the caller
+      will retry with SM.
+    """
+    path = os.environ.get("CHROMEDRIVER_PATH", "").strip()
+    if not path:
+        return Service(), "sm"
+
+    if not os.path.isfile(path):
+        logger.warning("CHROMEDRIVER_PATH=%s not found – using Selenium Manager", path)
+        return Service(), "sm"
+
+    dmajor = _driver_major(path)
+    cmajor = _detect_chrome_major()
+
+    if dmajor and cmajor and dmajor != cmajor:
+        logger.warning(
+            "chromedriver %s (Chrome %d) does NOT match installed Chrome %d – "
+            "falling back to Selenium Manager (auto-installs matching driver)",
+            path, dmajor, cmajor)
+        return Service(), "sm"
+
+    if dmajor and cmajor:
+        logger.info("Using explicit chromedriver (Chrome %d matched)", cmajor)
+    else:
+        logger.info("Using explicit chromedriver %s (version check skipped)", path)
+
+    return Service(executable_path=path), "explicit"
+
+
 def _build_driver(profile: DeviceProfile) -> webdriver.Chrome:
     """Return a headless Chrome WebDriver configured for the device profile."""
     options = Options()
@@ -212,16 +304,20 @@ def _build_driver(profile: DeviceProfile) -> webdriver.Chrome:
         options.add_argument(f"--proxy-server={proxy_url}")
         logger.info("Using egress proxy %s", proxy_url.split("@")[-1])
 
-    service_path = os.environ.get("CHROMEDRIVER_PATH")
-    if service_path:
-        service = Service(executable_path=service_path)
-    else:
-        # Selenium Manager (bundled with Selenium 4.6+) auto-resolves and
-        # downloads a chromedriver matching the installed Chrome binary
-        # (Windows dev machines and Linux containers alike). The image
-        # build pre-caches it, so the container works offline at runtime.
-        service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
+    # Resolve chromedriver service: explicit path (with version check) or
+    # Selenium Manager (auto-downloads matching driver when needed).
+    service, source = _resolve_service()
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+    except WebDriverException as exc:
+        if source == "explicit":
+            logger.warning(
+                "Explicit chromedriver failed (%s) – retrying with "
+                "Selenium Manager (auto-installs matching driver)", exc)
+            service = Service()
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            raise
     driver.implicitly_wait(config.IMPLICIT_WAIT)
     driver.set_page_load_timeout(config.PAGE_LOAD_TIMEOUT)
     _apply_stealth(driver, profile)
