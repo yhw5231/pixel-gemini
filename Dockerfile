@@ -29,7 +29,9 @@ RUN pip install -r requirements.txt
 # Pre-cache the chromedriver matching the installed Chrome via Selenium
 # Manager and verify headless Chrome actually launches – this doubles as a
 # build-time smoke test (catches missing libraries early) and makes the
-# container work offline at runtime.
+# container work offline at runtime. The matching driver is then baked into
+# the image at /usr/local/bin/chromedriver, so the container needs NO manual
+# chromedriver installation and no network at runtime.
 RUN python -c "
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -40,7 +42,11 @@ o.add_argument('--disable-dev-shm-usage')
 d = webdriver.Chrome(options=o)
 d.quit()
 print('Chrome + chromedriver verified')
-"
+" \
+    && DRIVER="$(find /root/.cache/selenium -type f -name chromedriver | head -n 1)" \
+    && cp "$DRIVER" /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && /usr/local/bin/chromedriver --version
 
 COPY . .
 

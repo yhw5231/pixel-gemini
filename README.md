@@ -39,25 +39,48 @@
 
 ---
 
-## 快速开始（Docker 容器运行）
+## 快速开始（Docker 容器运行，从拉取代码到全部启动）
 
 ### 1. 前置要求
 
-- 已安装 **Docker** 与 **Docker Compose**（`docker compose version` 可验证）
-- 开放/可访问端口 `8000`
+- 已安装 **Docker** 与 **Docker Compose v2**（`docker compose version` 可验证）
+- 端口 `8000` 空闲
+- 网络可访问 dl.google.com（首次构建会下载 Google Chrome）
 
-### 2. 启动
+### 2. 拉取代码
 
 ```bash
-# 在项目根目录执行
+git clone https://github.com/yhw5231/pixel-gemini.git
+cd pixel-gemini
+```
+
+### 3. 构建并启动（首次约 3–8 分钟）
+
+```bash
 docker compose up -d --build
 ```
 
-首次构建会下载 Python 3.12 镜像并安装 Chromium，约需几分钟。
+构建过程中自动完成：
 
-### 3. 登录 Web 界面
+| 步骤 | 说明 |
+|---|---|
+| Python 3.12 基础镜像 | 拉取 `python:3.12-slim-bookworm` |
+| 安装 Google Chrome Stable | 下载 .deb 并安装 Chrome 137+（与模拟 UA 同代） |
+| 安装 Python 依赖 | `pip install -r requirements.txt`（含 selenium / flask 等） |
+| **下载 chromedriver** | 通过 Selenium Manager 自动下载**与 Chrome 匹配的 chromedriver** |
+| **内置 chromedriver** | 复制到 `/usr/local/bin/chromedriver`，**无需手动安装** |
+| **冒烟验证** | 构建期自动启动一次无头 Chrome，确保浏览器与驱动都能正常工作 |
+| 复制应用代码 | 源码、模板、静态文件 |
 
-打开浏览器访问 **http://localhost:8000**，使用默认管理员账号登录：
+> 构建只需一次，后续启动直接 `docker compose up -d`（无 `--build`）即用缓存。
+
+### 4. 验证部署
+
+```bash
+docker compose ps            # STATUS 应为 healthy（健康检查访问 /healthz）
+```
+
+浏览器打开 **http://localhost:8000**，使用默认管理员账号登录：
 
 | 字段 | 值 |
 |---|---|
@@ -67,12 +90,32 @@ docker compose up -d --build
 > ⚠️ **安全提示**：默认账号密码仅用于本地/内网测试。对外暴露前请务必
 > 修改密码（环境变量 `ADMIN_PASSWORD`）并设置固定 `SECRET_KEY`。
 
-### 4. 停止 / 查看状态
+### 5. chromedriver 说明（容器运行时）
+
+需要 chromedriver 吗？——**需要**。Selenium 驱动 Chrome 必须要有与 Chrome 版本匹配的 chromedriver。
+
+**但是不需要自己安装**：
+- 镜像构建时已通过 Selenium Manager 自动下载**匹配的 chromedriver**，并复制到
+  `/usr/local/bin/chromedriver`（`docker-compose.yml` 默认 `CHROMEDRIVER_PATH` 指向它）。
+- 构建期还做了无头 Chrome 启动冒烟验证，确保驱动可用。
+- 容器运行时**无需联网、无需额外挂载 chromedriver**。
+- 即使把 `CHROMEDRIVER_PATH` 留空，Selenium Manager（Selenium 4.6+ 内置）也会自动解析驱动
+  （优先命中镜像缓存，必要时联网下载）。
+- 本地开发同理：本机装好 Chrome 后 `CHROMEDRIVER_PATH` 留空即可，Selenium Manager 自动搞定。
+
+### 6. 升级到新版本
 
 ```bash
-docker compose down          # 停止（保留数据卷）
-docker compose logs -f       # 查看容器日志
-docker compose ps            # 查看容器状态
+git pull                          # 拉取最新代码
+docker compose up -d --build      # 重建镜像并重启（保留数据卷）
+```
+
+### 7. 停止 / 运维
+
+```bash
+docker compose down          # 停止容器（保留数据卷与镜像）
+docker compose logs -f       # 查看实时日志
+docker compose down -v       # 停止并删除数据卷（不可恢复！）
 ```
 
 数据（SQLite 数据库）保存在 Docker 数据卷 `pixel-gemini-data` 中，
@@ -143,7 +186,7 @@ Cookie 中，所有页面均需要登录后才能访问。
 | `WEB_PORT` | `8000` | Web 服务端口 |
 | `DATA_DIR` | `/data` | SQLite 数据库与数据文件目录 |
 | `TELEGRAM_BOT_TOKEN` | 空 | 设置后同时启动 Telegram 机器人 |
-| `CHROMEDRIVER_PATH` | 空 | chromedriver 路径；**留空时由 Selenium Manager 自动解析**（镜像构建期已预缓存） |
+| `CHROMEDRIVER_PATH` | `/usr/local/bin/chromedriver` | chromedriver 路径；**镜像已内置**；留空则由 Selenium Manager 自动解析 |
 | `PROXY_URL` | 空 | 出口代理（强烈建议），如 `http://user:pass@host:port` |
 | `DEVICE_TIMEZONE` | `America/Los_Angeles` | 模拟设备时区（应与代理地区一致） |
 | `DEVICE_LANGUAGE` | `en-US` | 模拟设备语言 |
@@ -241,21 +284,28 @@ pixel-gemini/
 - 账号开启 2FA / 有安全验证 → 需人工处理，或更换无 2FA 的账号
 
 **Q2：报错 "session not created: Failed to create Chrome process"？**
-容器内 Chromium 未正常安装/启动。本机运行则需安装 Chrome 或设置
-`CHROMEDRIVER_PATH` 指向匹配的 chromedriver。
+容器内 Chromium/Chrome 未正常安装或启动。本机开发则需安装 Chrome 或设置
+`CHROMEDRIVER_PATH` 指向匹配的 chromedriver（参考上方"chromedriver 说明"）。
 
-**Q3：检测结果是"没有发现 Offer"？**
+**Q3：容器运行时需要自己装 chromedriver 吗？**
+**不需要。**镜像构建时已自动安装 Google Chrome Stable + 下载匹配的 chromedriver
+并复制到 `/usr/local/bin/chromedriver`（`docker-compose.yml` 默认
+`CHROMEDRIVER_PATH` 指向它）。容器运行时无需联网、无需手动挂载驱动。
+即使把 `CHROMEDRIVER_PATH` 留空，Selenium Manager（Selenium 4.6+ 内置）
+也会自动解析（优先命中镜像缓存）。
+
+**Q4：检测结果是"没有发现 Offer"？**
 Offer 可能不适用于该账号所属地区/已激活/活动结束。可稍后重试。
 
-**Q4：修改管理员密码？**
+**Q5：修改管理员密码？**
 设置环境变量 `ADMIN_PASSWORD` 并重启容器（`docker compose up -d`），
 重启时会同步更新数据库中的密码。
 
-**Q5：数据存在哪里？**
+**Q6：数据存在哪里？**
 容器内 `/data/pixel_gemini.db`（对应 Docker 卷 `pixel-gemini-data`）。
 本机开发时为 `./data/pixel_gemini.db`。
 
-**Q6：如何彻底清空数据？**
+**Q7：如何彻底清空数据？**
 `docker compose down -v` 删除容器与数据卷（不可恢复）。
 
 ---

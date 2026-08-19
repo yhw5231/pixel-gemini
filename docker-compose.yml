@@ -15,9 +15,10 @@ services:
       WEB_PORT: 8000
       # Optional Telegram bot (leave empty to disable)
       TELEGRAM_BOT_TOKEN: ""
-      # chromedriver: leave empty for webdriver-manager (auto, pre-cached
-      # in the image); or point to a custom driver binary
-      CHROMEDRIVER_PATH: ""
+      # chromedriver: BAKED INTO the image at /usr/local/bin/chromedriver
+      # (downloaded & verified during docker build, no manual install, works
+      # offline). Leave empty to let Selenium Manager auto-resolve instead.
+      CHROMEDRIVER_PATH: /usr/local/bin/chromedriver
       # Optional egress proxy – strongly recommended (Google flags
       # datacenter IPs). Example: http://user:pass@host:port
       PROXY_URL: ""
