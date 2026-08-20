@@ -20,18 +20,19 @@ DEVICE_MANUFACTURER = "Google"
 ANDROID_VERSION = "16"
 ANDROID_SDK = "36"
 # Build ID and Chrome version must belong to the same era: a Pixel 10 Pro
-# launched Aug 2025 ships with the Sep 2025 Android 16 patch level and a
-# Chrome from the same period (137.x).  Using an old Chrome (e.g. 124.x)
-# with Android 16 makes the user-agent internally inconsistent and easy to
-# flag as fabricated.
+# launched Aug 2025 ships with the Sep 2025 Android 16 patch level. The
+# Chrome version below tracks the Chrome for Testing build installed in the
+# container image (Dockerfile ARG CHROME_VERSION) – using an old/foreign
+# Chrome makes the user-agent internally inconsistent and easy to flag as
+# fabricated.
 BUILD_ID = "AP3A.250905.001"
 BUILD_NUMBER = "12979047"
-CHROME_VERSION = "137.0.7278.83"
-CHROME_MAJOR_VERSION = 137
-CHROME_BUILD = 7278
-# Randomised patch stays inside the real 137.0.7278.x release window.
-CHROME_PATCH_MIN = 70
-CHROME_PATCH_MAX = 150
+CHROME_VERSION = "154.0.8012.0"
+CHROME_MAJOR_VERSION = 154
+CHROME_BUILD = 8012
+# Randomised patch stays inside the real 154.0.8012.x release window.
+CHROME_PATCH_MIN = 1
+CHROME_PATCH_MAX = 50
 
 # Locale / timezone used by the simulated device.  The timezone should be
 # consistent with the exit IP (see docs/设备模拟与风控分析.md).
