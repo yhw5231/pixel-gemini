@@ -44,7 +44,7 @@
 ### 1. 前置要求
 
 - 已安装 **Docker** 与 **Docker Compose v2**（`docker compose version` 可验证）
-- 端口 `8000` 空闲
+- 端口 `8910` 空闲
 - 网络可访问 dl.google.com（首次构建会下载 Google Chrome）
 
 ### 2. 拉取代码
@@ -80,7 +80,7 @@ docker compose up -d --build
 docker compose ps            # STATUS 应为 healthy（健康检查访问 /healthz）
 ```
 
-浏览器打开 **http://localhost:8000**，使用默认管理员账号登录：
+浏览器打开 **http://localhost:8910**，使用默认管理员账号登录：
 
 | 字段 | 值 |
 |---|---|
@@ -168,7 +168,7 @@ Cookie 中，所有页面均需要登录后才能访问。
 ### 典型使用流程
 
 ```
-1. 浏览器打开 http://localhost:8000，用 admin/admin 登录
+1. 浏览器打开 http://localhost:8910，用 admin/admin 登录
 2. 进入「Accounts」→ 添加你的 Gmail 账号（邮箱 + 密码）
 3. 点击该账号的「▶ Check offer」
 4. 自动跳转到运行详情页，等待进度（约 30~60 秒）
@@ -185,7 +185,7 @@ Cookie 中，所有页面均需要登录后才能访问。
 | `ADMIN_PASSWORD` | `admin` | Web 界面管理员密码 |
 | `SECRET_KEY` | 随机生成 | Flask 会话签名密钥（生产环境务必固定） |
 | `WEB_HOST` | `0.0.0.0` | Web 服务监听地址 |
-| `WEB_PORT` | `8000` | Web 服务端口 |
+| `WEB_PORT` | `8910` | Web 服务端口 |
 | `DATA_DIR` | `/data` | SQLite 数据库与数据文件目录 |
 | `TELEGRAM_BOT_TOKEN` | 空 | 设置后同时启动 Telegram 机器人 |
 | `CHROMEDRIVER_PATH` | 空（推荐） | chromedriver 路径；默认由 Selenium Manager 自动匹配 Chrome 版本，**不匹配/缺失时自动联网安装**；也可显式指定（例：`/usr/local/bin/chromedriver`，镜像内置的离线兜底） |
@@ -217,7 +217,7 @@ python -m venv .venv
 
 pip install -r requirements.txt
 
-# 启动 Web 界面（http://127.0.0.1:8000）
+# 启动 Web 界面（http://127.0.0.1:8910）
 python webapp.py
 
 # 另开终端启动 Telegram 机器人（需设置 TELEGRAM_BOT_TOKEN）

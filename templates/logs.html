@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Logs · Pixel Gemini{% endblock %}
+{% block title %}{{ '日志' if lang == 'zh' else 'Logs' }} · Pixel Gemini{% endblock %}
 {% block content %}
-<h1>Application logs</h1>
-<p class="muted">Last {{ lines|length }} log lines (in-memory ring buffer).</p>
+<h1>{{ '应用日志' if lang == 'zh' else 'Application logs' }}</h1>
+<p class="muted">{% if lang == 'zh' %}最近 {{ lines|length }} 行日志（内存环形缓冲区）。{% else %}Last {{ lines|length }} log lines (in-memory ring buffer).{% endif %}</p>
 {% if lines %}
 <pre class="logs">{% for line in lines %}{{ line }}
 {% endfor %}</pre>
 {% else %}
-<p class="muted">No log lines captured yet.</p>
+<p class="muted">{{ '尚未捕获任何日志。' if lang == 'zh' else 'No log lines captured yet.' }}</p>
 {% endif %}
 {% endblock %}

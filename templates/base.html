@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,16 +9,21 @@
 <body>
 <nav>
   <div class="brand">📱 Pixel Gemini</div>
-  {% if user %}
   <div class="links">
-    <a href="{{ url_for('dashboard') }}">Dashboard</a>
-    <a href="{{ url_for('accounts') }}">Accounts</a>
-    <a href="{{ url_for('runs') }}">Runs</a>
-    <a href="{{ url_for('logs') }}">Logs</a>
+    {% if user %}
+    <a href="{{ url_for('dashboard') }}">{{ '控制台' if lang == 'zh' else 'Dashboard' }}</a>
+    <a href="{{ url_for('accounts') }}">{{ '账户' if lang == 'zh' else 'Accounts' }}</a>
+    <a href="{{ url_for('runs') }}">{{ '运行记录' if lang == 'zh' else 'Runs' }}</a>
+    <a href="{{ url_for('logs') }}">{{ '日志' if lang == 'zh' else 'Logs' }}</a>
     <span class="user">👤 {{ user }}</span>
-    <a class="logout" href="{{ url_for('logout') }}">Logout</a>
+    <a class="logout" href="{{ url_for('logout') }}">{{ '退出登录' if lang == 'zh' else 'Logout' }}</a>
+    {% endif %}
+    <span class="language-switch" aria-label="{{ '语言切换' if lang == 'zh' else 'Language selector' }}">
+      <a href="{{ url_for('set_language', lang='zh') }}" class="{{ 'active' if lang == 'zh' else '' }}">中文</a>
+      <span>/</span>
+      <a href="{{ url_for('set_language', lang='en') }}" class="{{ 'active' if lang == 'en' else '' }}">English</a>
+    </span>
   </div>
-  {% endif %}
 </nav>
 <main>
   {% with messages = get_flashed_messages(with_categories=true) %}

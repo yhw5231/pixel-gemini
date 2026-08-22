@@ -1,35 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Accounts · Pixel Gemini{% endblock %}
+{% block title %}{{ '账户' if lang == 'zh' else 'Accounts' }} · Pixel Gemini{% endblock %}
 {% block content %}
-<h1>Gmail Accounts</h1>
+<h1>{{ 'Gmail 账户' if lang == 'zh' else 'Gmail Accounts' }}</h1>
 
 <div class="card">
-  <h2>Add account</h2>
+  <h2>{{ '添加账户' if lang == 'zh' else 'Add account' }}</h2>
   <form method="post" action="{{ url_for('accounts') }}" autocomplete="off">
     <div class="row">
       <div>
-        <label for="email">Gmail address</label>
+        <label for="email">{{ 'Gmail 地址' if lang == 'zh' else 'Gmail address' }}</label>
         <input type="email" id="email" name="email" required placeholder="user@gmail.com">
       </div>
       <div>
-        <label for="password">Password</label>
+        <label for="password">{{ '密码' if lang == 'zh' else 'Password' }}</label>
         <input type="password" id="password" name="password" required placeholder="••••••••">
       </div>
       <div class="grow">
-        <label for="note">Note (optional)</label>
-        <input type="text" id="note" name="note" placeholder="e.g. personal account">
+        <label for="note">{{ '备注（可选）' if lang == 'zh' else 'Note (optional)' }}</label>
+        <input type="text" id="note" name="note" placeholder="{{ '例如：个人账户' if lang == 'zh' else 'e.g. personal account' }}">
       </div>
       <div class="align-end">
-        <button type="submit" class="primary">Add account</button>
+        <button type="submit" class="primary">{{ '添加账户' if lang == 'zh' else 'Add account' }}</button>
       </div>
     </div>
   </form>
 </div>
 
-<h2>Saved accounts</h2>
+<h2>{{ '已保存的账户' if lang == 'zh' else 'Saved accounts' }}</h2>
 {% if accounts %}
 <table>
-  <thead><tr><th>ID</th><th>Email</th><th>Note</th><th>Added</th><th>Actions</th></tr></thead>
+  <thead><tr><th>ID</th><th>{{ '邮箱' if lang == 'zh' else 'Email' }}</th><th>{{ '备注' if lang == 'zh' else 'Note' }}</th><th>{{ '添加时间' if lang == 'zh' else 'Added' }}</th><th>{{ '操作' if lang == 'zh' else 'Actions' }}</th></tr></thead>
   <tbody>
   {% for a in accounts %}
     <tr>
@@ -40,11 +40,11 @@
       <td>
         <form method="post" action="{{ url_for('start_run') }}" class="inline">
           <input type="hidden" name="account_id" value="{{ a['id'] }}">
-          <button type="submit" class="small">▶ Check offer</button>
+          <button type="submit" class="small">▶ {{ '检查优惠' if lang == 'zh' else 'Check offer' }}</button>
         </form>
         <form method="post" action="{{ url_for('account_delete', account_id=a['id']) }}" class="inline"
-              onsubmit="return confirm('Delete account {{ a['email'] }}?');">
-          <button type="submit" class="small danger">Delete</button>
+              onsubmit="return confirm('{{ '确定要删除账户' if lang == 'zh' else 'Delete account' }} {{ a['email'] }}?');">
+          <button type="submit" class="small danger">{{ '删除' if lang == 'zh' else 'Delete' }}</button>
         </form>
       </td>
     </tr>
@@ -52,6 +52,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No accounts saved yet. Add one above to run the Gemini offer check.</p>
+<p class="muted">{{ '尚未保存任何账户。请先在上方添加账户，然后运行 Gemini 优惠检查。' if lang == 'zh' else 'No accounts saved yet. Add one above to run the Gemini offer check.' }}</p>
 {% endif %}
 {% endblock %}

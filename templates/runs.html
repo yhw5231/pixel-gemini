@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Runs · Pixel Gemini{% endblock %}
+{% block title %}{{ '运行记录' if lang == 'zh' else 'Runs' }} · Pixel Gemini{% endblock %}
 {% block content %}
-<h1>Run history</h1>
+<h1>{{ '运行记录' if lang == 'zh' else 'Run history' }}</h1>
 {% if runs %}
 <table>
-  <thead><tr><th>#</th><th>Account</th><th>Status</th><th>Result</th><th>Started</th><th>Finished</th></tr></thead>
+  <thead><tr><th>#</th><th>{{ '账户' if lang == 'zh' else 'Account' }}</th><th>{{ '状态' if lang == 'zh' else 'Status' }}</th><th>{{ '结果' if lang == 'zh' else 'Result' }}</th><th>{{ '开始时间' if lang == 'zh' else 'Started' }}</th><th>{{ '完成时间' if lang == 'zh' else 'Finished' }}</th></tr></thead>
   <tbody>
   {% for r in runs %}
     <tr>
@@ -23,6 +23,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No runs recorded yet.</p>
+<p class="muted">{{ '尚无运行记录。' if lang == 'zh' else 'No runs recorded yet.' }}</p>
 {% endif %}
 {% endblock %}

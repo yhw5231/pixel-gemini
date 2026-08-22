@@ -320,6 +320,26 @@ def _build_driver(profile: DeviceProfile) -> webdriver.Chrome:
             raise
     driver.implicitly_wait(config.IMPLICIT_WAIT)
     driver.set_page_load_timeout(config.PAGE_LOAD_TIMEOUT)
+
+    # Read the version from the browser that actually started, then synchronize
+    # the profile UA and Client Hints before navigating to any website.
+    browser_version = str(driver.capabilities.get("browserVersion", "")).strip()
+    if not browser_version:
+        driver.quit()
+        raise WebDriverException(
+            "Started Chromium did not report browserVersion; cannot synchronize UA"
+        )
+
+    ua_template = config.USER_AGENT_TEMPLATES[0]
+    profile.chrome_version = browser_version
+    profile.user_agent = ua_template.format(
+        android=config.ANDROID_VERSION,
+        model=config.DEVICE_MODEL,
+        build=config.BUILD_ID,
+        chrome=browser_version,
+    )
+    logger.info("Synchronized User-Agent with running Chromium %s", browser_version)
+
     _apply_stealth(driver, profile)
     return driver
 

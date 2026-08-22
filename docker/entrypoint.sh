@@ -10,9 +10,9 @@ if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   python run_bot.py &
 fi
 
-echo "==> Starting web UI on ${WEB_HOST:-0.0.0.0}:${WEB_PORT:-8000}"
+echo "==> Starting web UI on ${WEB_HOST:-0.0.0.0}:${WEB_PORT:-8910}"
 exec gunicorn \
-  --bind "${WEB_HOST:-0.0.0.0}:${WEB_PORT:-8000}" \
+  --bind "${WEB_HOST:-0.0.0.0}:${WEB_PORT:-8910}" \
   --workers 1 \
   --threads 8 \
   --timeout 120 \

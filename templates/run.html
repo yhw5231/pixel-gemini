@@ -1,31 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Run #{{ run['id'] }} · Pixel Gemini{% endblock %}
+{% block title %}{{ '运行' if lang == 'zh' else 'Run' }} #{{ run['id'] }} · Pixel Gemini{% endblock %}
 {% block content %}
-<h1>Run #{{ run['id'] }}</h1>
+<h1>{{ '运行' if lang == 'zh' else 'Run' }} #{{ run['id'] }}</h1>
 <div class="card">
-  <p><strong>Account:</strong> {{ run['account_email'] }}</p>
-  <p><strong>Status:</strong> <span class="badge {{ run['status'] }}" id="status-badge">{{ run['status'] }}</span></p>
+  <p><strong>{{ '账户：' if lang == 'zh' else 'Account:' }}</strong> {{ run['account_email'] }}</p>
+  <p><strong>{{ '状态：' if lang == 'zh' else 'Status:' }}</strong> <span class="badge {{ run['status'] }}" id="status-badge">{{ run['status'] }}</span></p>
   <p id="live-message" class="muted">{{ live['message'] if live and live['message'] else '—' }}</p>
-
   {% if run['offer_link'] %}
-  <p><strong>Offer link:</strong> <a href="{{ run['offer_link'] }}" target="_blank" rel="noopener">{{ run['offer_link'] }}</a></p>
+  <p><strong>{{ '优惠链接：' if lang == 'zh' else 'Offer link:' }}</strong> <a href="{{ run['offer_link'] }}" target="_blank" rel="noopener">{{ run['offer_link'] }}</a></p>
   {% endif %}
   {% if run['error'] %}
-  <p><strong>Error:</strong> <span class="err">{{ run['error'] }}</span></p>
+  <p><strong>{{ '错误：' if lang == 'zh' else 'Error:' }}</strong> <span class="err">{{ run['error'] }}</span></p>
   {% endif %}
-  {% if run['device'] %}
-  <pre class="device">{{ run['device'] }}</pre>
-  {% endif %}
-  <p class="muted small">Started: {{ run['created_at'] }} · Finished: {{ run['finished_at'] or '—' }}</p>
-  <p><a href="{{ url_for('runs') }}">← Back to runs</a></p>
+  {% if run['device'] %}<pre class="device">{{ run['device'] }}</pre>{% endif %}
+  <p class="muted small">{{ '开始：' if lang == 'zh' else 'Started:' }} {{ run['created_at'] }} · {{ '完成：' if lang == 'zh' else 'Finished:' }} {{ run['finished_at'] or '—' }}</p>
+  <p><a href="{{ url_for('runs') }}">← {{ '返回运行记录' if lang == 'zh' else 'Back to runs' }}</a></p>
 </div>
-
 <script>
 const runId = {{ run['id'] }};
+const offerLabel = {{ ('优惠链接：' if lang == 'zh' else 'Offer link:')|tojson }};
 const doneStatuses = new Set(['done', 'error']);
-let currentStatus = '{{ run['status'] }}';
+let currentStatus = {{ run['status']|tojson }};
 const finished = doneStatuses.has(currentStatus);
-
 async function poll() {
   try {
     const res = await fetch('/api/run/' + runId, {headers: {'Accept': 'application/json'}});
@@ -40,14 +36,19 @@ async function poll() {
     if (!finished) {
       if (data.offer_link) {
         const p = document.createElement('p');
-        p.innerHTML = '<strong>Offer link:</strong> <a href="' + data.offer_link + '" target="_blank" rel="noopener">' + data.offer_link + '</a>';
+        const strong = document.createElement('strong');
+        strong.textContent = offerLabel;
+        const link = document.createElement('a');
+        link.href = data.offer_link;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = data.offer_link;
+        p.append(strong, ' ', link);
         msg.after(p);
       }
-      if (doneStatuses.has(data.status)) {
-        window.location.reload();
-      }
+      if (doneStatuses.has(data.status)) window.location.reload();
     }
-  } catch (e) { /* transient fetch errors are fine */ }
+  } catch (e) { /* Ignore transient polling errors. */ }
 }
 if (!finished) {
   setInterval(poll, 2000);

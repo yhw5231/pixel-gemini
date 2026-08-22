@@ -4,7 +4,7 @@ services:
     build: .
     container_name: pixel-gemini
     ports:
-      - "8000:8000"
+      - "8910:8910"
     environment:
       # Web admin credentials (defaults: admin / admin)
       ADMIN_USERNAME: admin
@@ -12,7 +12,7 @@ services:
       # Session signing key – change in production!
       SECRET_KEY: change-me-in-production
       WEB_HOST: 0.0.0.0
-      WEB_PORT: 8000
+      WEB_PORT: 8910
       # Optional Telegram bot (leave empty to disable)
       TELEGRAM_BOT_TOKEN: ""
       # chromedriver: 默认使用镜像内置的 /usr/local/bin/chromedriver（构建期

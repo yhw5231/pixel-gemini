@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Login · Pixel Gemini{% endblock %}
+{% block title %}{{ '登录' if lang == 'zh' else 'Login' }} · Pixel Gemini{% endblock %}
 {% block content %}
 <div class="card narrow">
-  <h1>Admin Login</h1>
-  <p class="muted">Sign in to manage accounts and run the Gemini offer automation.</p>
+  <h1>{{ '管理员登录' if lang == 'zh' else 'Admin Login' }}</h1>
+  <p class="muted">{{ '登录后可管理账户并运行 Gemini 优惠检查自动化。' if lang == 'zh' else 'Sign in to manage accounts and run the Gemini offer automation.' }}</p>
   {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
   <form method="post" action="{{ url_for('login') }}" autocomplete="off">
-    <label for="username">Username</label>
+    <label for="username">{{ '用户名' if lang == 'zh' else 'Username' }}</label>
     <input type="text" id="username" name="username" required autofocus>
-    <label for="password">Password</label>
+    <label for="password">{{ '密码' if lang == 'zh' else 'Password' }}</label>
     <input type="password" id="password" name="password" required>
-    <button type="submit" class="primary">Sign in</button>
+    <button type="submit" class="primary">{{ '登录' if lang == 'zh' else 'Sign in' }}</button>
   </form>
-  <p class="muted small">Default credentials: <code>admin</code> / <code>admin</code></p>
+  <p class="muted small">{{ '默认凭据：' if lang == 'zh' else 'Default credentials: ' }}<code>admin</code> / <code>admin</code></p>
 </div>
 {% endblock %}

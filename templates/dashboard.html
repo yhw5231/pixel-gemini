@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Pixel Gemini{% endblock %}
+{% block title %}{{ '控制台' if lang == 'zh' else 'Dashboard' }} · Pixel Gemini{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
+<h1>{{ '控制台' if lang == 'zh' else 'Dashboard' }}</h1>
 <div class="stats">
-  <div class="stat"><span class="num">{{ stats.get('done', 0) }}</span><span class="label">Done</span></div>
-  <div class="stat"><span class="num">{{ stats.get('error', 0) }}</span><span class="label">Errors</span></div>
-  <div class="stat"><span class="num">{{ stats.get('running', 0) + stats.get('queued', 0) }}</span><span class="label">Active</span></div>
+  <div class="stat"><span class="num">{{ stats.get('done', 0) }}</span><span class="label">{{ '已完成' if lang == 'zh' else 'Done' }}</span></div>
+  <div class="stat"><span class="num">{{ stats.get('error', 0) }}</span><span class="label">{{ '错误' if lang == 'zh' else 'Errors' }}</span></div>
+  <div class="stat"><span class="num">{{ stats.get('running', 0) + stats.get('queued', 0) }}</span><span class="label">{{ '进行中' if lang == 'zh' else 'Active' }}</span></div>
 </div>
-<h2>Recent runs</h2>
+<h2>{{ '最近运行' if lang == 'zh' else 'Recent runs' }}</h2>
 {% if recent %}
 <table>
-  <thead><tr><th>#</th><th>Account</th><th>Status</th><th>Result</th><th>Time</th></tr></thead>
+  <thead><tr><th>#</th><th>{{ '账户' if lang == 'zh' else 'Account' }}</th><th>{{ '状态' if lang == 'zh' else 'Status' }}</th><th>{{ '结果' if lang == 'zh' else 'Result' }}</th><th>{{ '时间' if lang == 'zh' else 'Time' }}</th></tr></thead>
   <tbody>
   {% for r in recent %}
     <tr>
@@ -28,6 +28,6 @@
   </tbody>
 </table>
 {% else %}
-<p class="muted">No runs yet. Add an account and start the automation from the <a href="{{ url_for('accounts') }}">Accounts</a> page.</p>
+<p class="muted">{% if lang == 'zh' %}暂无运行记录。请先在<a href="{{ url_for('accounts') }}">账户</a>页面添加账户并启动自动化。{% else %}No runs yet. Add an account and start the automation from the <a href="{{ url_for('accounts') }}">Accounts</a> page.{% endif %}</p>
 {% endif %}
 {% endblock %}

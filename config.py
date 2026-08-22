@@ -9,7 +9,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
-WEB_PORT = int(os.environ.get("WEB_PORT", "8000"))
+WEB_PORT = int(os.environ.get("WEB_PORT", "8910"))
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 

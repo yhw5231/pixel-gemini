@@ -16,6 +16,7 @@ import threading
 import time
 from collections import deque
 from datetime import datetime, timezone
+from urllib.parse import urljoin, urlparse
 
 from flask import (
     Flask,
@@ -299,6 +300,34 @@ def create_app() -> Flask:
 
     app.teardown_appcontext(close_db)
 
+    # ── Language selection ───────────────────────────────────────────────────
+
+    @app.before_request
+    def select_language():
+        requested = request.args.get("lang")
+        if requested in {"zh", "en"}:
+            flask_session["lang"] = requested
+        g.lang = flask_session.get("lang", "zh")
+
+    @app.context_processor
+    def inject_language():
+        return {"lang": getattr(g, "lang", "zh")}
+
+    @app.get("/language/<lang>")
+    def set_language(lang: str):
+        if lang in {"zh", "en"}:
+            flask_session["lang"] = lang
+
+        target = url_for("dashboard")
+        if request.referrer:
+            candidate = urlparse(urljoin(request.host_url, request.referrer))
+            host = urlparse(request.host_url)
+            if candidate.scheme in {"http", "https"} and candidate.netloc == host.netloc:
+                target = candidate.path
+                if candidate.query:
+                    target += "?" + candidate.query
+        return redirect(target)
+
     # ── Pages ────────────────────────────────────────────────────────────────
 
     @app.get("/healthz")
@@ -320,7 +349,7 @@ def create_app() -> Flask:
                 flask_session["user"] = username
                 flask_session.permanent = True
                 return redirect(request.args.get("next") or url_for("dashboard"))
-            error = "Invalid username or password."
+            error = "用户名或密码错误。" if g.lang == "zh" else "Invalid username or password."
         return render_template("login.html", error=error)
 
     @app.get("/logout")
@@ -353,13 +382,13 @@ def create_app() -> Flask:
             password = request.form.get("password") or ""
             note = (request.form.get("note") or "").strip()
             if not email or not password:
-                flash("Email and password are required.", "error")
+                flash("邮箱和密码不能为空。" if g.lang == "zh" else "Email and password are required.", "error")
             else:
                 try:
                     add_account(email, password, note)
-                    flash(f"Account {email} added.", "ok")
+                    flash(f"已添加账户 {email}。" if g.lang == "zh" else f"Account {email} added.", "ok")
                 except sqlite3.IntegrityError:
-                    flash(f"Account {email} already exists.", "error")
+                    flash(f"账户 {email} 已存在。" if g.lang == "zh" else f"Account {email} already exists.", "error")
             return redirect(url_for("accounts"))
         return render_template(
             "accounts.html",
@@ -371,7 +400,7 @@ def create_app() -> Flask:
     @login_required
     def account_delete(account_id: int):
         delete_account(account_id)
-        flash("Account deleted.", "ok")
+        flash("账户已删除。" if g.lang == "zh" else "Account deleted.", "ok")
         return redirect(url_for("accounts"))
 
     # ── Runs ─────────────────────────────────────────────────────────────────
@@ -382,7 +411,7 @@ def create_app() -> Flask:
         account_id = request.form.get("account_id", type=int)
         account = get_account(account_id) if account_id else None
         if not account:
-            flash("Please choose a valid account.", "error")
+            flash("请选择有效账户。" if g.lang == "zh" else "Please choose a valid account.", "error")
             return redirect(url_for("accounts"))
         run_id = insert_run(account["id"], account["email"], RUN_STATUS_QUEUED)
         thread = threading.Thread(
@@ -392,7 +421,7 @@ def create_app() -> Flask:
             name=f"run-{run_id}",
         )
         thread.start()
-        flash(f"Automation started for {account['email']}.", "ok")
+        flash(f"已为 {account['email']} 启动自动化。" if g.lang == "zh" else f"Automation started for {account['email']}.", "ok")
         return redirect(url_for("run_detail", run_id=run_id))
 
     @app.get("/runs")
@@ -411,7 +440,7 @@ def create_app() -> Flask:
             "SELECT * FROM runs WHERE id = ?", (run_id,)
         ).fetchone()
         if run is None:
-            flash("Run not found.", "error")
+            flash("未找到该运行记录。" if g.lang == "zh" else "Run not found.", "error")
             return redirect(url_for("runs"))
         with RUNS_LOCK:
             live = RUNS.get(run_id)
@@ -460,5 +489,5 @@ app = create_app()
 if __name__ == "__main__":
     init_db()
     host = os.environ.get("WEB_HOST", "127.0.0.1")
-    port = int(os.environ.get("WEB_PORT", "8000"))
+    port = int(os.environ.get("WEB_PORT", "8910"))
     app.run(host=host, port=port, debug=False)
