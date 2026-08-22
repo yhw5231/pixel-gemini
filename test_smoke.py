@@ -89,4 +89,53 @@ r = client.get("/")
 assert r.status_code == 302
 print("logout OK")
 
+# Log in again for the authenticated regression tests below.
+r = client.post("/login", data={"username": "admin", "password": "admin"})
+assert r.status_code == 302
+
+# 9. Regression: starting a run registers live queued state before worker startup
+from unittest.mock import patch
+
+with webapp.app.app_context():
+    account = webapp.get_db().execute(
+        "SELECT id FROM accounts ORDER BY id LIMIT 1"
+    ).fetchone()
+    if account is None:
+        webapp.add_account("queue-regression@example.com", "test-password")
+        account = webapp.get_db().execute(
+            "SELECT id FROM accounts WHERE email = ?",
+            ("queue-regression@example.com",),
+        ).fetchone()
+
+with patch.object(webapp.threading.Thread, "start", return_value=None):
+    r = client.post("/run", data={"account_id": account["id"]})
+assert r.status_code == 302 and "/run/" in r.headers["Location"]
+run_id = int(r.headers["Location"].rstrip("/").split("/")[-1])
+with webapp.RUNS_LOCK:
+    queued = dict(webapp.RUNS[run_id])
+assert queued["status"] == webapp.RUN_STATUS_QUEUED
+assert queued["message"]
+print("run registered before worker startup OK")
+
+# 10. Regression: API exposes 2FA state and the web endpoint accepts a code
+with webapp.RUNS_LOCK:
+    webapp.RUNS[run_id]["status"] = webapp.RUN_STATUS_AWAITING_2FA
+    webapp.RUNS[run_id]["message"] = "Two-step verification required"
+with webapp.app.app_context():
+    webapp.update_run_status(run_id, webapp.RUN_STATUS_AWAITING_2FA)
+r = client.get(f"/api/run/{run_id}")
+assert r.status_code == 200
+assert r.get_json()["status"] == webapp.RUN_STATUS_AWAITING_2FA
+assert r.get_json()["awaiting_2fa"] is True
+r = client.get(f"/run/{run_id}")
+page = r.get_data(as_text=True)
+assert r.status_code == 200
+assert 'id="twofa-box"' in page and 'id="twofa-form"' in page
+r = client.post(f"/run/{run_id}/code", data={"code": "123456"})
+assert r.status_code == 200 and r.get_json()["ok"] is True
+with webapp.RUNS_LOCK:
+    assert webapp.RUNS[run_id]["code"] == "123456"
+    assert webapp.RUNS[run_id]["status"] == webapp.RUN_STATUS_RUNNING
+print("two-step verification API and interaction UI OK")
+
 print("\nALL SMOKE TESTS PASSED")

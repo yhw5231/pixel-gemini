@@ -45,8 +45,19 @@ SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
 RUN_STATUS_QUEUED = "queued"
 RUN_STATUS_RUNNING = "running"
+RUN_STATUS_AWAITING_2FA = "awaiting_2fa"
 RUN_STATUS_DONE = "done"
 RUN_STATUS_ERROR = "error"
+
+# How long a run may live before the watchdog force-quits its browser, and
+# how long the automation waits for a manually entered 2FA code.
+RUN_TIMEOUT_SEC = int(os.environ.get("RUN_TIMEOUT_SEC", "600"))
+TWO_FA_WAIT_SEC = int(os.environ.get("TWO_FA_WAIT_SEC", "600"))
+
+try:
+    import pyotp
+except ImportError:  # pragma: no cover - TOTP support is optional
+    pyotp = None
 
 logger = logging.getLogger(__name__)
 
@@ -122,11 +133,12 @@ def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS accounts (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            email      TEXT UNIQUE NOT NULL,
-            password   TEXT NOT NULL,
-            note       TEXT DEFAULT '',
-            created_at TEXT NOT NULL
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            email        TEXT UNIQUE NOT NULL,
+            password     TEXT NOT NULL,
+            note         TEXT DEFAULT '',
+            totp_secret  TEXT DEFAULT '',
+            created_at   TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS runs (
@@ -142,6 +154,22 @@ def init_db() -> None:
         );
         """
     )
+    # Migration for databases created before TOTP support existed.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(accounts)")}
+    if "totp_secret" not in cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN totp_secret TEXT DEFAULT ''")
+        logger.info("Migrated accounts table: added totp_secret column")
+
+    # Runs left over from a previous process can never finish – close them.
+    stale = conn.execute(
+        "UPDATE runs SET status = ?, error = ?, finished_at = ? "
+        "WHERE status IN (?, ?, ?)",
+        (RUN_STATUS_ERROR, "服务重启，任务中断 (interrupted by restart).",
+         _now(), RUN_STATUS_QUEUED, RUN_STATUS_RUNNING, RUN_STATUS_AWAITING_2FA),
+    ).rowcount
+    if stale:
+        logger.info("Marked %d stale run(s) as error after restart", stale)
+
     row = conn.execute(
         "SELECT id FROM users WHERE username = ?", (ADMIN_USERNAME,)
     ).fetchone()
@@ -163,16 +191,33 @@ def init_db() -> None:
 
 def list_accounts() -> list:
     return get_db().execute(
-        "SELECT id, email, password, note, created_at FROM accounts ORDER BY id DESC"
+        "SELECT id, email, password, note, totp_secret, created_at "
+        "FROM accounts ORDER BY id DESC"
     ).fetchall()
 
 
-def add_account(email: str, password: str, note: str = "") -> None:
+def add_account(email: str, password: str, note: str = "",
+                totp_secret: str = "") -> None:
     get_db().execute(
-        "INSERT INTO accounts (email, password, note, created_at) VALUES (?, ?, ?, ?)",
-        (email, password, note, _now()),
+        "INSERT INTO accounts (email, password, note, totp_secret, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (email, password, note, _normalize_totp(totp_secret), _now()),
     )
     get_db().commit()
+
+
+def _normalize_totp(secret: str) -> str:
+    """Strip spaces/upper-case a base32 TOTP secret; '' stays ''."""
+    return "".join((secret or "").split()).upper()
+
+
+def _do_add_account(email: str, password: str, note: str,
+                    totp_secret: str, lang: str) -> None:
+    try:
+        add_account(email, password, note, totp_secret)
+        flash(f"已添加账户 {email}。" if lang == "zh" else f"Account {email} added.", "ok")
+    except sqlite3.IntegrityError:
+        flash(f"账户 {email} 已存在。" if lang == "zh" else f"Account {email} already exists.", "error")
 
 
 def delete_account(account_id: int) -> None:
@@ -182,7 +227,8 @@ def delete_account(account_id: int) -> None:
 
 def get_account(account_id: int):
     return get_db().execute(
-        "SELECT id, email, password FROM accounts WHERE id = ?", (account_id,)
+        "SELECT id, email, password, totp_secret FROM accounts WHERE id = ?",
+        (account_id,),
     ).fetchone()
 
 
@@ -202,12 +248,18 @@ def insert_run(account_id, account_email: str, status: str) -> int:
     return cur.lastrowid
 
 
+def update_run_status(run_id: int, status: str) -> None:
+    get_db().execute("UPDATE runs SET status = ? WHERE id = ?", (status, run_id))
+    get_db().commit()
+
+
 def finish_run(run_id: int, status: str, offer_link=None, error=None,
                device=None) -> None:
     get_db().execute(
         "UPDATE runs SET status = ?, offer_link = ?, error = ?, device = ?, "
-        "finished_at = ? WHERE id = ?",
-        (status, offer_link, error, device, _now(), run_id),
+        "finished_at = ? WHERE id = ? AND status NOT IN (?, ?)",
+        (status, offer_link, error, device, _now(), run_id,
+         RUN_STATUS_DONE, RUN_STATUS_ERROR),
     )
     get_db().commit()
 
@@ -215,30 +267,77 @@ def finish_run(run_id: int, status: str, offer_link=None, error=None,
 # ── Background automation runner ──────────────────────────────────────────────
 
 def run_automation(account_id: int, account_email: str, password: str,
-                   run_id: int) -> None:
+                   run_id: int, totp_secret: str = "") -> None:
     """Execute the Gemini offer check in a background thread."""
     # Database access requires an application context (threads have none).
     with app.app_context():
-        _run_automation(account_id, account_email, password, run_id)
+        _run_automation(account_id, account_email, password, run_id, totp_secret)
 
 
 def _run_automation(account_id: int, account_email: str, password: str,
-                    run_id: int) -> None:
+                    run_id: int, totp_secret: str = "") -> None:
     """Background body – runs inside an application context."""
-    def set_run(message: str, status: str = None):
+    def set_run(message: str, status: str = None, persist: bool = False):
         with RUNS_LOCK:
-            RUNS[run_id] = {
-                "status": status or RUNS[run_id].get("status", RUN_STATUS_RUNNING),
-                "message": message,
-                "link": RUNS[run_id].get("link"),
-            }
+            entry = RUNS[run_id]
+            entry["status"] = status or entry.get("status", RUN_STATUS_RUNNING)
+            entry["message"] = message
+        if persist and status:
+            update_run_status(run_id, status)
 
     with RUNS_LOCK:
-        RUNS[run_id] = {"status": RUN_STATUS_RUNNING, "message": "Starting…", "link": None}
+        RUNS[run_id] = {
+            "status": RUN_STATUS_RUNNING,
+            "message": "Starting…",
+            "link": None,
+            "started_at": time.time(),
+            "driver": None,
+            "code_event": threading.Event(),
+            "code": None,
+        }
+    update_run_status(run_id, RUN_STATUS_RUNNING)
+
+    def otp_provider():
+        """Return a 2FA code for the automation, or None to abort."""
+        secret = _normalize_totp(totp_secret)
+        if secret and pyotp is not None:
+            try:
+                code = pyotp.TOTP(secret).now()
+                logger.info("Supplied TOTP code for run #%s from stored secret", run_id)
+                return code
+            except Exception:
+                logger.exception("Invalid TOTP secret for run #%s – "
+                                 "falling back to manual entry", run_id)
+        # Manual path: ask the user through the web UI and wait.
+        set_run("等待两步验证码…请在运行页面输入 Google 验证码。"
+                if getattr(g, "lang", "zh") != "en" else
+                "Two-step verification required – enter the code on the run page.",
+                RUN_STATUS_AWAITING_2FA, persist=True)
+        with RUNS_LOCK:
+            entry = RUNS[run_id]
+            event = entry["code_event"]
+        if not event.wait(TWO_FA_WAIT_SEC):
+            return None
+        with RUNS_LOCK:
+            code = RUNS[run_id].get("code")
+        if code:
+            set_run("Verification code received – continuing login…",
+                    RUN_STATUS_RUNNING, persist=True)
+        return code
+
+    def driver_callback(driver):
+        with RUNS_LOCK:
+            if run_id in RUNS:
+                RUNS[run_id]["driver"] = driver
+
     try:
         device = create_device_profile()
         set_run("Launching Pixel 10 Pro simulator and logging into Google…")
-        offer_link = check_gemini_offer(account_email, password, device)
+        offer_link = check_gemini_offer(
+            account_email, password, device,
+            otp_provider=otp_provider,
+            driver_callback=driver_callback,
+        )
         if offer_link:
             set_run(f"Offer found: {offer_link}")
             with RUNS_LOCK:
@@ -265,6 +364,83 @@ def _run_automation(account_id: int, account_email: str, password: str,
             RUNS[run_id]["status"] = RUN_STATUS_ERROR
             RUNS[run_id]["message"] = message
         finish_run(run_id, RUN_STATUS_ERROR, error=str(exc))
+    finally:
+        with RUNS_LOCK:
+            if run_id in RUNS:
+                RUNS[run_id]["driver"] = None
+                RUNS[run_id]["code_event"].set()  # release any waiter
+
+
+def submit_2fa_code(run_id: int, code: str) -> bool:
+    """Hand a manually entered 2FA code to a waiting run. False if not waiting."""
+    with RUNS_LOCK:
+        entry = RUNS.get(run_id)
+        if not entry or entry.get("status") != RUN_STATUS_AWAITING_2FA:
+            return False
+        entry["code"] = code
+        entry["code_event"].set()
+        entry["status"] = RUN_STATUS_RUNNING
+        entry["message"] = "Verification code received – continuing login…"
+    update_run_status(run_id, RUN_STATUS_RUNNING)
+    return True
+
+
+WATCHDOG_INTERVAL_SEC = 20
+
+
+def _watchdog_loop() -> None:
+    """Force-quit browser sessions whose run exceeded RUN_TIMEOUT_SEC."""
+    while True:
+        time.sleep(WATCHDOG_INTERVAL_SEC)
+        try:
+            with RUNS_LOCK:
+                snapshot = [
+                    (rid, dict(e)) for rid, e in RUNS.items()
+                    if e.get("status") in (RUN_STATUS_RUNNING, RUN_STATUS_QUEUED,
+                                           RUN_STATUS_AWAITING_2FA)
+                    and time.time() - e.get("started_at", time.time())
+                    > RUN_TIMEOUT_SEC
+                ]
+            for run_id, entry in snapshot:
+                logger.warning("Run #%s exceeded %ss – terminating browser",
+                               run_id, RUN_TIMEOUT_SEC)
+                with RUNS_LOCK:
+                    if run_id in RUNS:
+                        RUNS[run_id]["status"] = RUN_STATUS_ERROR
+                        RUNS[run_id]["message"] = _truncate(
+                            f"Run timed out after {RUN_TIMEOUT_SEC}s")
+                        RUNS[run_id]["code_event"].set()
+                driver = entry.get("driver")
+                if driver is not None:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                # If the automation thread is stuck, at least the DB reflects
+                # reality; the thread's own finish_run is a no-op then.
+                with app.app_context():
+                    row = get_db().execute(
+                        "SELECT status FROM runs WHERE id = ?", (run_id,)
+                    ).fetchone()
+                    if row and row["status"] in (
+                        RUN_STATUS_QUEUED, RUN_STATUS_RUNNING, RUN_STATUS_AWAITING_2FA
+                    ):
+                        finish_run(run_id, RUN_STATUS_ERROR,
+                                   error=f"Run timed out after {RUN_TIMEOUT_SEC}s")
+        except Exception:
+            logger.exception("Run watchdog iteration failed")
+
+
+def start_watchdog() -> None:
+    """Start the single watchdog daemon thread (idempotent)."""
+    with RUNS_LOCK:
+        existing = RUNS.get("__watchdog__")
+    if existing:
+        return
+    t = threading.Thread(target=_watchdog_loop, daemon=True, name="run-watchdog")
+    with RUNS_LOCK:
+        RUNS.setdefault("__watchdog__", True)
+    t.start()
 
 
 def _truncate(text: str, limit: int = 300) -> str:
@@ -381,14 +557,19 @@ def create_app() -> Flask:
             email = (request.form.get("email") or "").strip()
             password = request.form.get("password") or ""
             note = (request.form.get("note") or "").strip()
+            totp_secret = _normalize_totp(request.form.get("totp_secret") or "")
             if not email or not password:
                 flash("邮箱和密码不能为空。" if g.lang == "zh" else "Email and password are required.", "error")
-            else:
+            elif totp_secret and pyotp is not None:
                 try:
-                    add_account(email, password, note)
-                    flash(f"已添加账户 {email}。" if g.lang == "zh" else f"Account {email} added.", "ok")
-                except sqlite3.IntegrityError:
-                    flash(f"账户 {email} 已存在。" if g.lang == "zh" else f"Account {email} already exists.", "error")
+                    pyotp.TOTP(totp_secret).now()
+                except Exception:
+                    flash("TOTP 密钥格式无效（应为 Base32）。" if g.lang == "zh" else "Invalid TOTP secret (Base32 expected).", "error")
+                    return redirect(url_for("accounts"))
+                else:
+                    _do_add_account(email, password, note, totp_secret, g.lang)
+            else:
+                _do_add_account(email, password, note, totp_secret, g.lang)
             return redirect(url_for("accounts"))
         return render_template(
             "accounts.html",
@@ -414,13 +595,34 @@ def create_app() -> Flask:
             flash("请选择有效账户。" if g.lang == "zh" else "Please choose a valid account.", "error")
             return redirect(url_for("accounts"))
         run_id = insert_run(account["id"], account["email"], RUN_STATUS_QUEUED)
+        # Register the run before starting the worker so the run page/API can
+        # immediately observe it and the watchdog can detect startup failures.
+        with RUNS_LOCK:
+            RUNS[run_id] = {
+                "status": RUN_STATUS_QUEUED,
+                "message": "任务已排队，正在启动自动化…" if g.lang == "zh" else "Queued; starting automation…",
+                "link": None,
+                "started_at": time.time(),
+                "driver": None,
+                "code_event": threading.Event(),
+                "code": None,
+            }
         thread = threading.Thread(
             target=run_automation,
-            args=(account["id"], account["email"], account["password"], run_id),
+            args=(account["id"], account["email"], account["password"], run_id,
+                  account["totp_secret"] or ""),
             daemon=True,
             name=f"run-{run_id}",
         )
-        thread.start()
+        try:
+            thread.start()
+        except Exception as exc:
+            logger.exception("Unable to start automation thread for run #%s", run_id)
+            with RUNS_LOCK:
+                RUNS[run_id]["status"] = RUN_STATUS_ERROR
+                RUNS[run_id]["message"] = _truncate(f"Unable to start automation: {exc}")
+            finish_run(run_id, RUN_STATUS_ERROR,
+                       error=f"Unable to start automation: {exc}")
         flash(f"已为 {account['email']} 启动自动化。" if g.lang == "zh" else f"Automation started for {account['email']}.", "ok")
         return redirect(url_for("run_detail", run_id=run_id))
 
@@ -460,15 +662,35 @@ def create_app() -> Flask:
         if run is None:
             return jsonify({"error": "not found"}), 404
         with RUNS_LOCK:
-            live = RUNS.get(run_id)
+            live = dict(RUNS[run_id]) if run_id in RUNS else None
+        live_status = (live or {}).get("status")
+        # The in-memory state is authoritative while the run is alive.
+        db_status = run["status"]
+        status = live_status if (
+            live_status and db_status not in (RUN_STATUS_DONE, RUN_STATUS_ERROR)
+        ) else db_status
         return jsonify({
             "id": run["id"],
-            "status": run["status"],
+            "status": status,
             "message": (live or {}).get("message"),
             "offer_link": run["offer_link"],
             "error": run["error"],
             "finished_at": run["finished_at"],
+            "awaiting_2fa": status == RUN_STATUS_AWAITING_2FA,
         })
+
+    @app.post("/run/<int:run_id>/code")
+    @login_required
+    def submit_code(run_id: int):
+        code = (request.form.get("code") or "").strip()
+        if not code and request.is_json:
+            code = str((request.get_json(silent=True) or {}).get("code") or "")
+        code = "".join(code.split())
+        if not code:
+            return jsonify({"error": "empty code"}), 400
+        if not submit_2fa_code(run_id, code):
+            return jsonify({"error": "run is not waiting for a code"}), 409
+        return jsonify({"ok": True})
 
     # ── Logs ─────────────────────────────────────────────────────────────────
 
@@ -485,6 +707,8 @@ def create_app() -> Flask:
 
 
 app = create_app()
+init_db()
+start_watchdog()
 
 if __name__ == "__main__":
     init_db()

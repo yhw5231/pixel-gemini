@@ -6,6 +6,15 @@
   <p><strong>{{ '账户：' if lang == 'zh' else 'Account:' }}</strong> {{ run['account_email'] }}</p>
   <p><strong>{{ '状态：' if lang == 'zh' else 'Status:' }}</strong> <span class="badge {{ run['status'] }}" id="status-badge">{{ run['status'] }}</span></p>
   <p id="live-message" class="muted">{{ live['message'] if live and live['message'] else '—' }}</p>
+  <div id="twofa-box" style="display:none; margin: 0.8em 0; padding: 0.8em; border: 1px solid var(--warn, #f5b83d); border-radius: 8px;">
+    <p><strong>{{ '需要两步验证' if lang == 'zh' else 'Two-step verification required' }}</strong></p>
+    <p class="muted">{{ '请在下方输入 Google 账号的 6 位验证码（或备用码），自动化将继续登录。' if lang == 'zh' else 'Enter the 6-digit code (or backup code) from Google below; the automation will continue.' }}</p>
+    <form id="twofa-form" class="inline">
+      <input type="text" id="twofa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" required>
+      <button type="submit" class="small primary">{{ '提交验证码' if lang == 'zh' else 'Submit code' }}</button>
+    </form>
+    <p id="twofa-error" class="err" style="display:none"></p>
+  </div>
   {% if run['offer_link'] %}
   <p><strong>{{ '优惠链接：' if lang == 'zh' else 'Offer link:' }}</strong> <a href="{{ run['offer_link'] }}" target="_blank" rel="noopener">{{ run['offer_link'] }}</a></p>
   {% endif %}
@@ -21,16 +30,44 @@ const runId = {{ run['id'] }};
 const offerLabel = {{ ('优惠链接：' if lang == 'zh' else 'Offer link:')|tojson }};
 const doneStatuses = new Set(['done', 'error']);
 let currentStatus = {{ run['status']|tojson }};
-const finished = doneStatuses.has(currentStatus);
+let finished = doneStatuses.has(currentStatus);
+function toggleTwofa(on) {
+  const box = document.getElementById('twofa-box');
+  if (box) box.style.display = on ? 'block' : 'none';
+}
+toggleTwofa({{ 'true' if live and live['status'] == 'awaiting_2fa' else 'false' }});
+document.getElementById('twofa-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const input = document.getElementById('twofa-code');
+  const errBox = document.getElementById('twofa-error');
+  errBox.style.display = 'none';
+  const res = await fetch('/run/' + runId + '/code', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'code=' + encodeURIComponent(input.value),
+  });
+  if (res.ok) {
+    toggleTwofa(false);
+    input.value = '';
+    poll();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    errBox.textContent = data.error || 'submit failed';
+    errBox.style.display = 'block';
+  }
+});
 async function poll() {
   try {
     const res = await fetch('/api/run/' + runId, {headers: {'Accept': 'application/json'}});
     const data = await res.json();
+    currentStatus = data.status;
+    finished = doneStatuses.has(currentStatus);
     const badge = document.getElementById('status-badge');
     if (badge) {
       badge.textContent = data.status;
       badge.className = 'badge ' + data.status;
     }
+    toggleTwofa(currentStatus === 'awaiting_2fa');
     const msg = document.getElementById('live-message');
     if (msg && data.message) msg.textContent = data.message;
     if (!finished) {

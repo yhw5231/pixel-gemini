@@ -386,9 +386,63 @@ def _wait_for(driver: webdriver.Chrome, by: str, value: str,
     )
 
 
-def _gmail_login(driver: webdriver.Chrome, email: str, password: str) -> Optional[str]:
+OTP_INPUT_SELECTORS = (
+    "input#totpPin",
+    'input[name="totpPin"]',
+    'input[name="code"]',
+    'input[aria-label*="code" i]',
+    'input[type="tel"]',
+)
+
+
+def _find_otp_input(driver: webdriver.Chrome):
+    """Return a visible one-time-code input on a challenge page, if any."""
+    for selector in OTP_INPUT_SELECTORS:
+        try:
+            for el in driver.find_elements(By.CSS_SELECTOR, selector):
+                try:
+                    if el.is_displayed():
+                        return el
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return None
+
+
+def _submit_otp(driver: webdriver.Chrome, code: str) -> None:
+    """Type *code* into the visible OTP input and press Next."""
+    el = _find_otp_input(driver)
+    if el is None:
+        raise NoSuchElementException("OTP input disappeared")
+    el.clear()
+    _type_human(el, code)
+    _human_sleep(0.4, 1.0)
+    for selector in ("#totpNext", "#next", 'button[type="submit"]'):
+        try:
+            btn = driver.find_element(By.CSS_SELECTOR, selector)
+            btn.click()
+            return
+        except NoSuchElementException:
+            continue
+    el.submit()
+
+
+def _challenge_active(driver: webdriver.Chrome) -> bool:
+    """True when the current page is still a Google challenge page."""
+    path = urlparse(driver.current_url).path or ""
+    return "challenge" in path or _page_contains_marker(driver)
+
+
+def _gmail_login(driver: webdriver.Chrome, email: str, password: str,
+                 otp_provider=None) -> Optional[str]:
     """
     Perform Gmail / Google account login.
+
+    When Google presents a two-step-verification challenge, *otp_provider* (a
+    zero-argument callable returning a 6/8-digit code, or ``None`` on
+    timeout) is consulted for the code; without one the run fails fast with
+    a descriptive reason.
 
     Returns ``None`` on apparent success, or a human-readable failure reason
     (challenge page / wrong credentials / timeout).
@@ -425,12 +479,42 @@ def _gmail_login(driver: webdriver.Chrome, email: str, password: str) -> Optiona
         hostname = parsed.hostname or ""
         path = parsed.path or ""
 
-        # A security challenge page means the attempt was flagged – fail with
-        # a descriptive reason instead of guessing.
-        if "challenge" in path or _page_contains_marker(driver):
-            reason = _login_failure_reason(driver)
-            logger.warning("Login flagged for %s: %s", email, reason)
-            return reason
+        # ── Two-step verification / challenge handling ─────────────────────
+        # A challenge with a one-time-code input can be satisfied (TOTP
+        # secret or a code typed in by the user via the web UI).  Anything
+        # else (device prompts, "couldn't sign you in", …) is still fatal.
+        if _challenge_active(driver) or _find_otp_input(driver) is not None:
+            if _find_otp_input(driver) is not None and otp_provider is not None:
+                passed = False
+                for attempt in range(1, 4):
+                    logger.info("2FA challenge detected for %s (attempt %d/3) – "
+                                "requesting verification code", email, attempt)
+                    code = otp_provider()
+                    if not code:
+                        return ("需要两步验证，但在限定时间内未收到验证码（"
+                                "可在账户中配置 TOTP 密钥，或在运行页面手动输入）。")
+                    try:
+                        _submit_otp(driver, str(code).strip())
+                    except NoSuchElementException:
+                        break  # input vanished – likely accepted
+                    _human_sleep(3.0, 4.5)
+                    if not _challenge_active(driver) and _find_otp_input(driver) is None:
+                        passed = True
+                        break
+                    logger.warning("2FA code not accepted for %s (attempt %d/3)",
+                                   email, attempt)
+                if not passed and _challenge_active(driver):
+                    return "两步验证码未被 Google 接受，请检查 TOTP 密钥或验证码。"
+                logger.info("Two-step verification passed for %s", email)
+                # Recompute URL state after the challenge redirect.
+                current_url = driver.current_url
+                parsed = urlparse(current_url)
+                hostname = parsed.hostname or ""
+                path = parsed.path or ""
+            else:
+                reason = _login_failure_reason(driver)
+                logger.warning("Login flagged for %s: %s", email, reason)
+                return reason
 
         # Success: landed on the account hub or any /u/<id>/… account page.
         if hostname == "myaccount.google.com" or (
@@ -582,12 +666,19 @@ class GoogleAutomationError(Exception):
 
 
 def check_gemini_offer(email: str, password: str,
-                       device: DeviceProfile) -> Optional[str]:
+                       device: DeviceProfile,
+                       otp_provider=None,
+                       driver_callback=None) -> Optional[str]:
     """
     Main entry point.
 
     Logs into *email* / *password* using the supplied *device* profile,
     navigates to Google One, and returns the Gemini Pro offer link (or None).
+
+    *otp_provider* is a zero-argument callable consulted when Google asks
+    for a two-step verification code (return the code, or ``None`` to
+    abort).  *driver_callback*, when given, is invoked with the live
+    WebDriver so the caller can supervise it (e.g. force-quit on timeout).
 
     Raises :class:`GoogleAutomationError` if the driver cannot be started or
     the login step fails with an error.
@@ -596,8 +687,14 @@ def check_gemini_offer(email: str, password: str,
     try:
         logger.info("Starting WebDriver for session %s", device.session_id)
         driver = _build_driver(device)
+        if driver_callback is not None:
+            try:
+                driver_callback(driver)
+            except Exception:
+                logger.exception("driver_callback failed (continuing)")
 
-        login_error = _gmail_login(driver, email, password)
+        login_error = _gmail_login(driver, email, password,
+                                   otp_provider=otp_provider)
         if login_error is not None:
             raise GoogleAutomationError(login_error)
 

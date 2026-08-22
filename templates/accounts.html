@@ -15,6 +15,10 @@
         <label for="password">{{ '密码' if lang == 'zh' else 'Password' }}</label>
         <input type="password" id="password" name="password" required placeholder="••••••••">
       </div>
+      <div>
+        <label for="totp_secret">{{ '2FA TOTP 密钥（可选）' if lang == 'zh' else '2FA TOTP secret (optional)' }}</label>
+        <input type="text" id="totp_secret" name="totp_secret" placeholder="JBSWY3DPEHPK3PXP">
+      </div>
       <div class="grow">
         <label for="note">{{ '备注（可选）' if lang == 'zh' else 'Note (optional)' }}</label>
         <input type="text" id="note" name="note" placeholder="{{ '例如：个人账户' if lang == 'zh' else 'e.g. personal account' }}">
@@ -29,12 +33,13 @@
 <h2>{{ '已保存的账户' if lang == 'zh' else 'Saved accounts' }}</h2>
 {% if accounts %}
 <table>
-  <thead><tr><th>ID</th><th>{{ '邮箱' if lang == 'zh' else 'Email' }}</th><th>{{ '备注' if lang == 'zh' else 'Note' }}</th><th>{{ '添加时间' if lang == 'zh' else 'Added' }}</th><th>{{ '操作' if lang == 'zh' else 'Actions' }}</th></tr></thead>
+  <thead><tr><th>ID</th><th>{{ '邮箱' if lang == 'zh' else 'Email' }}</th><th>2FA</th><th>{{ '备注' if lang == 'zh' else 'Note' }}</th><th>{{ '添加时间' if lang == 'zh' else 'Added' }}</th><th>{{ '操作' if lang == 'zh' else 'Actions' }}</th></tr></thead>
   <tbody>
   {% for a in accounts %}
     <tr>
       <td>{{ a['id'] }}</td>
       <td>{{ a['email'] }}</td>
+      <td>{{ '✓ TOTP' if a['totp_secret'] else '—' }}</td>
       <td>{{ a['note'] or '—' }}</td>
       <td>{{ a['created_at'] }}</td>
       <td>
